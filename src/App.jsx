@@ -40,6 +40,19 @@ const sq = (k) => { const b = LAYOUT[k]; return { position: 'absolute', left: `$
 const loadSave = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {} } catch { return {} } }
 const DAY = 86400000
 
+// Where the user is: exact GPS if allowed, otherwise approximate (city level) from the internet connection
+const LOOKUP = 'https://api.bigdatacloud.net/data/reverse-geocode-client'
+const getSpot = () => new Promise((ok) => {
+  const approx = () => fetch(LOOKUP).then((r) => r.json())
+    .then((d) => ok(d.latitude != null ? { lat: d.latitude, lng: d.longitude, approx: true } : null))
+    .catch(() => ok(null))
+  if (!navigator.geolocation) return approx()
+  navigator.geolocation.getCurrentPosition((p) => ok({ lat: p.coords.latitude, lng: p.coords.longitude, approx: false }), approx, { timeout: 8000, maximumAge: 60000 })
+})
+// Turns coordinates into a place name like "Toronto, Ontario, Canada"
+const placeOf = (lat, lng) => fetch(`${LOOKUP}?latitude=${lat}&longitude=${lng}&localityLanguage=en`).then((r) => r.json())
+  .then((d) => [d.city || d.locality, d.principalSubdivision, d.countryName].filter(Boolean).join(', ')).catch(() => '')
+
 // Shows your graphic from public/graphics, or a word if the file is missing
 function Img({ src, size, fb }) {
   const [bad, setBad] = useState(false)
@@ -57,6 +70,7 @@ export default function App() {
   const [camErr, setCamErr] = useState(false)
   const [obs, setObs] = useState(() => loadSave().obs || [])
   const [xp, setXp] = useState(() => loadSave().xp || 0)
+  const [newPin, setNewPin] = useState(null) // newest catch, shown first on the map
   const [press, setPress] = useState(null)
   const video = useRef()
   const frame = useRef()
@@ -93,19 +107,19 @@ export default function App() {
 
   const say = (t) => { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(t)) }
   const shrink = (src, max = 1024) => new Promise((ok) => { const i = new Image(); i.onload = () => { const s = Math.min(1, max / Math.max(i.width, i.height)), c = document.createElement('canvas'); c.width = i.width * s; c.height = i.height * s; c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.8)) }; i.src = src })
-  const getSpot = () => new Promise((ok) => navigator.geolocation
-    ? navigator.geolocation.getCurrentPosition((p) => ok([p.coords.latitude, p.coords.longitude]), () => ok([null, null]), { timeout: 8000 })
-    : ok([null, null]))
 
-  // Logs every successful catch and awards XP
+  // Logs every catch, awards XP, and pins it on the map where it was found
   const logCatch = async (d, img) => {
     const isNew = !obs.some((o) => o.sp.sci === d.sci)
     const gain = isNew ? XP_NEW : XP_REPEAT
     const thumb = await shrink(img, 320)
-    const [lat, lng] = await getSpot()
-    setObs((p) => [{ sp: d, photo: thumb, date: new Date().toLocaleDateString(), t: new Date().toISOString(), lat, lng }, ...p])
+    const spot = await getSpot()
+    const place = spot ? await placeOf(spot.lat, spot.lng) : ''
+    const t = new Date().toISOString()
+    setObs((p) => [{ sp: d, photo: thumb, date: new Date().toLocaleDateString(), t, lat: spot?.lat ?? null, lng: spot?.lng ?? null, approx: spot?.approx, place }, ...p])
     setXp((x) => x + gain)
-    return { isNew, gain }
+    if (spot) setNewPin(t)
+    return { isNew, gain, pinned: !!spot, place }
   }
 
   const identify = async (src) => {
@@ -192,6 +206,7 @@ export default function App() {
             <p>{r.desc}</p>
             {r.article && <p>{r.article}</p>}
             <p><b>Diet:</b> {r.diet}<br /><b>Habitat:</b> {r.habitat}<br /><b>Conservation:</b> {r.status}</p>
+            {r.place && <p><b>Found in:</b> {r.place}</p>}
             <p style={{ fontSize: 10, opacity: 0.7 }}>Use the cross to scroll. Press yellow to close.</p>
           </div>
         ) : <>
@@ -200,7 +215,9 @@ export default function App() {
           {stage !== 'live' && photo && <img src={photo} alt="scan" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
           {stage === 'scanning' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#0006', color: '#fff', fontWeight: 700 }}>Analyzing...</div>}
           {stage === 'result' && r && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: '#000a', color: '#fff', fontSize: 12, padding: '4px 8px' }}>
-            <b>{r.name}</b> · {r.gain == null ? 'saving...' : `+${r.gain} XP`} {r.isNew && 'NEW'}<br /><span style={{ fontSize: 10 }}>yellow = info · teal = scan again</span>
+            <b>{r.name}</b> · {r.gain == null ? 'saving...' : `+${r.gain} XP`} {r.isNew && 'NEW'}
+            {r.gain != null && <div style={{ fontSize: 10 }}>{r.pinned ? `Pinned on map: ${r.place || 'your location'}` : 'No location found, not pinned'}</div>}
+            <div style={{ fontSize: 10 }}>yellow = info · teal = scan again</div>
           </div>}
         </>}
       </div>
@@ -216,7 +233,7 @@ export default function App() {
     </div>
   </>
 
-  else if (tab === 'globe') screen = <MapPage pins={located} speciesCount={species.length} />
+  else if (tab === 'globe') screen = <MapPage pins={located} speciesCount={species.length} focusT={newPin} onFocused={() => setNewPin(null)} />
 
   else if (tab === 'ranks') screen = <Leaderboard mine={{ name: PLAYER_NAME, xp, all: species.length, week: speciesSince(7), month: speciesSince(30) }} />
 

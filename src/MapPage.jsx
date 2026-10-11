@@ -35,8 +35,8 @@ function useSize(ref) {
   return s
 }
 
-// pins = catches that have a location; speciesCount = unique species caught
-export default function MapPage({ pins, speciesCount }) {
+// pins = catches with a location (newest first); focusT = a new catch to show right away
+export default function MapPage({ pins, speciesCount, focusT, onFocused }) {
   const { box, frame, bar, overlay } = useArrange('earthdex-map-layout', DEFAULT_LAYOUT, ORDER)
   const [sel, setSel] = useState(null)
   const [place, setPlace] = useState('')
@@ -44,6 +44,14 @@ export default function MapPage({ pins, speciesCount }) {
   const g = useRef()
   const size = useSize(globeBox)
   const ocean = useMemo(() => new THREE.MeshLambertMaterial({ color: OCEAN }), [])
+
+  // A new catch from the Pokédex opens straight away
+  useEffect(() => {
+    if (!focusT) return
+    const p = pins.find((o) => o.t === focusT)
+    if (p) setSel(p)
+    onFocused?.()
+  }, [focusT]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // Pin marker: your photo in a circle with a little point underneath
   const makePin = (o) => {
@@ -56,23 +64,25 @@ export default function MapPage({ pins, speciesCount }) {
     return el
   }
 
-  // Spin by itself; stop and fly to a pin when one is tapped
   // The starting size is the biggest the globe can get; you can still zoom out (smaller)
   const setupControls = () => {
     const c = g.current?.controls()
     if (!c) return
-    c.autoRotate = SPIN > 0; c.autoRotateSpeed = SPIN
+    c.autoRotate = !sel && SPIN > 0; c.autoRotateSpeed = SPIN
     c.minDistance = c.object.position.length()
+    if (sel) g.current.pointOfView({ lat: sel.lat, lng: sel.lng }, 900)
   }
-    useEffect(() => {
+  // Stop spinning and turn to a pin when one is selected
+  useEffect(() => {
     const c = g.current?.controls()
     if (c) c.autoRotate = !sel && SPIN > 0
     if (sel) g.current?.pointOfView({ lat: sel.lat, lng: sel.lng }, 900)
-    }, [sel])
+  }, [sel])
 
-  // Look up the place name (city, region, country) for the tapped pin
+  // Place name: saved with the catch, or looked up if it's an older catch
   useEffect(() => {
     if (!sel) return
+    if (sel.place) { setPlace(sel.place); return }
     setPlace('')
     let off = false
     fetch(`https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${sel.lat}&longitude=${sel.lng}&localityLanguage=en`)
@@ -102,7 +112,7 @@ export default function MapPage({ pins, speciesCount }) {
           onGlobeReady={setupControls} />}
       </div>
 
-      {/* Info card for the tapped pin, or a summary when nothing is tapped */}
+      {/* Info card for the selected pin, or a summary when nothing is selected */}
       {sel ? (
         <div key={sel.t || sel.date} style={{ ...card, display: 'flex', gap: '3cqw', alignItems: 'center', animation: 'pop .25s ease-out' }}>
           <img src={sel.photo} alt="" style={{ height: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: '3cqw', border: '0.5cqw solid #222', flexShrink: 0, boxSizing: 'border-box' }} />
@@ -110,7 +120,7 @@ export default function MapPage({ pins, speciesCount }) {
             <div style={{ fontSize: '3.8cqw', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '8cqw' }}>{sel.sp.name}</div>
             <i style={{ color: '#555' }}>{sel.sp.sci}</i>
             <div><b>Found:</b> {when}</div>
-            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b>Place:</b> {place || 'Finding place...'}</div>
+            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b>Place:</b> {place || 'Finding place...'}{sel.approx ? ' (approximate)' : ''}</div>
             <div style={{ fontSize: '2.1cqw', color: '#888' }}>{sel.lat.toFixed(4)}, {sel.lng.toFixed(4)}{sel.sp.type ? ` · ${sel.sp.type}` : ''}{sel.sp.status ? ` · ${sel.sp.status}` : ''}</div>
           </div>
           <button onClick={() => setSel(null)} style={{ position: 'absolute', top: '1.5cqw', right: '2cqw', border: 'none', background: 'none', fontSize: '2.6cqw', fontWeight: 800, textDecoration: 'underline', cursor: 'pointer', fontFamily: FONT }}>Close</button>
