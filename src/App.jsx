@@ -4,7 +4,11 @@ import Profile from './Profile'
 import Leaderboard from './Leaderboard'
 
 // THEME: change colors here
-const T = { bg: '#ffffff', text: '#111111', nav: '#8f8f8f', lcd: '#eef7e8', lcdText: '#1f2d1f' }
+const T = { bg: '#ffffff', text: '#111111', lcd: '#eef7e8', lcdText: '#1f2d1f' }
+const NAV_COLOR = '#fdd6e1' // pink nav bar (matches the Pokédex)
+const NAV_HEIGHT = 72 // nav bar height in pixels
+const NAV_ICON = 50 // nav image size in pixels
+const FILL = 1 // 1 = the Pokédex fills the phone's width; 0.95 = a little smaller
 const XP_NEW = 50 // points for a new species
 const XP_REPEAT = 10 // points for seeing a species again
 const PLAYER_NAME = 'Explorer' // the name shown on the profile and leaderboard
@@ -40,7 +44,7 @@ const DAY = 86400000
 function Img({ src, size, fb }) {
   const [bad, setBad] = useState(false)
   return bad ? <span style={{ fontSize: 12, fontWeight: 700 }}>{fb}</span>
-    : <img src={`/graphics/${src}`} alt="" onError={() => setBad(true)} style={{ width: size, height: size, objectFit: 'contain' }} />
+    : <img src={`/graphics/${src}`} alt="" draggable={false} onError={() => setBad(true)} style={{ width: size, height: size, objectFit: 'contain' }} />
 }
 
 export default function App() {
@@ -216,20 +220,27 @@ export default function App() {
 
   else if (tab === 'ranks') screen = <Leaderboard mine={{ name: PLAYER_NAME, xp, all: species.length, week: speciesSince(7), month: speciesSince(30) }} />
 
-  else screen = <>
-    <Profile xp={xp} caught={species.length} places={new Set(located.map((o) => `${o.lat.toFixed(2)},${o.lng.toFixed(2)}`)).size} name={'@' + PLAYER_NAME.toLowerCase()} />
-    <div style={{ textAlign: 'center', marginTop: 8 }}>
-      <button onClick={() => { if (confirm('Erase all catches and XP on this device?')) { setObs([]); setXp(0) } }} style={{ background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', color: '#888', fontFamily: 'ui-monospace, Menlo, monospace' }}>Reset demo progress</button>
-    </div>
-  </>
+  else screen = <Profile xp={xp} caught={species.length} places={new Set(located.map((o) => `${o.lat.toFixed(2)},${o.lng.toFixed(2)}`)).size} name={'@' + PLAYER_NAME.toLowerCase()} />
 
   return (
-    <div style={{ minHeight: '100vh', background: T.bg, color: T.text, fontFamily: 'system-ui', maxWidth: 480, margin: '0 auto', padding: '8px 16px 110px' }}>
-      {screen}
-      <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, display: 'flex', background: T.nav, padding: '8px 0' }}>
+    <div style={{ height: '100dvh', display: 'flex', flexDirection: 'column', background: T.bg, color: T.text, fontFamily: 'system-ui', overflow: 'hidden' }}>
+      {/* Page area: the Pokédex is sized to fill the phone and sits right on top of the nav bar */}
+      <main style={{ flex: 1, minHeight: 0, position: 'relative', overflow: 'hidden', containerType: 'size' }}>
+        <div style={{ position: 'absolute', left: '50%', bottom: 0, width: `min(${124.2 * FILL}cqw, ${71.5 * FILL}cqh)`, transform: 'translate(-51.5%, 5%)' }}>
+          {screen}
+        </div>
+        {tab === 'profile' && (
+          <button onClick={() => { if (confirm('Erase all catches and XP on this device?')) { setObs([]); setXp(0) } }}
+            style={{ position: 'absolute', top: 6, right: 10, background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', color: '#aaa', fontSize: 10, fontFamily: 'ui-monospace, Menlo, monospace' }}>Reset demo progress</button>
+        )}
+      </main>
+
+      {/* Pink nav bar, snug under the Pokédex */}
+      <nav style={{ flexShrink: 0, display: 'flex', background: NAV_COLOR, paddingBottom: 'env(safe-area-inset-bottom)' }}>
         {[['profile', 'nav-profile.png', 'Profile'], ['ranks', 'nav-trophy.png', 'Ranks'], ['dex', 'nav-dex.png', 'Dex'], ['globe', 'nav-globe.png', 'Map']].map(([t, src, fb]) => (
-          <button key={t} onClick={() => { if (t !== 'dex') again(); setTab(t) }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', opacity: tab === t ? 1 : 0.55 }}>
-            <Img src={src} size={56} fb={fb} />
+          <button key={t} onClick={() => { if (t !== 'dex') again(); setTab(t) }}
+            style={{ flex: 1, height: NAV_HEIGHT, display: 'grid', placeItems: 'center', background: 'none', border: 'none', cursor: 'pointer', opacity: tab === t ? 1 : 0.5, transition: 'opacity 150ms', WebkitTapHighlightColor: 'transparent' }}>
+            <Img src={src} size={NAV_ICON} fb={fb} />
           </button>
         ))}
       </nav>
