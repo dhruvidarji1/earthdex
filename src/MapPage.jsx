@@ -12,6 +12,9 @@ const LAND = ['#fbd3df', '#fdf1c6', '#c8ecd0', '#e6d9fb', '#ffe0c2', '#d4f0f7'] 
 const OUTLINE = '#2b2b2b' // country border color
 const SPIN = 0.6 // how fast the globe turns by itself (0 = no spinning)
 
+// CARD TEXT SIZES (smaller number = smaller text)
+const TXT = { name: '3.2cqw', body: '2.2cqw', small: '1.8cqw', summary: '2.6cqw', summaryTitle: '3.2cqw' }
+
 // Every country's outline, each given a pastel color
 const COUNTRIES = feature(world, world.objects.countries).features
 COUNTRIES.forEach((c, i) => { c.properties.color = LAND[i % LAND.length] })
@@ -94,6 +97,7 @@ export default function MapPage({ pins, speciesCount, focusT, onFocused }) {
 
   const when = sel ? (sel.t ? new Date(sel.t).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : sel.date) : ''
   const card = { ...box('card'), background: '#fff', border: '0.6cqw solid #222', borderRadius: '4cqw', boxShadow: '0 1.2cqw 0 #222', padding: '2.5cqw', boxSizing: 'border-box', fontFamily: FONT, color: '#1f1f2b' }
+  const oneLine = { whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }
 
   return <>
     {bar}
@@ -114,21 +118,21 @@ export default function MapPage({ pins, speciesCount, focusT, onFocused }) {
 
       {/* Info card for the selected pin, or a summary when nothing is selected */}
       {sel ? (
-        <div key={sel.t || sel.date} style={{ ...card, display: 'flex', gap: '3cqw', alignItems: 'center', animation: 'pop .25s ease-out' }}>
+        <div key={sel.t || sel.date} style={{ ...card, display: 'flex', gap: '3cqw', alignItems: 'center', overflow: 'hidden', animation: 'pop .25s ease-out' }}>
           <img src={sel.photo} alt="" style={{ height: '100%', aspectRatio: '1 / 1', objectFit: 'cover', borderRadius: '3cqw', border: '0.5cqw solid #222', flexShrink: 0, boxSizing: 'border-box' }} />
-          <div style={{ flex: 1, minWidth: 0, fontSize: '2.6cqw', lineHeight: 1.45, overflow: 'hidden' }}>
-            <div style={{ fontSize: '3.8cqw', fontWeight: 800, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', paddingRight: '8cqw' }}>{sel.sp.name}</div>
-            <i style={{ color: '#555' }}>{sel.sp.sci}</i>
-            <div><b>Found:</b> {when}</div>
-            <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}><b>Place:</b> {place || 'Finding place...'}{sel.approx ? ' (approximate)' : ''}</div>
-            <div style={{ fontSize: '2.1cqw', color: '#888' }}>{sel.lat.toFixed(4)}, {sel.lng.toFixed(4)}{sel.sp.type ? ` · ${sel.sp.type}` : ''}{sel.sp.status ? ` · ${sel.sp.status}` : ''}</div>
+          <div style={{ flex: 1, minWidth: 0, fontSize: TXT.body, lineHeight: 1.35, overflow: 'hidden' }}>
+            <div style={{ ...oneLine, fontSize: TXT.name, fontWeight: 800, paddingRight: '8cqw' }}>{sel.sp.name}</div>
+            <div style={{ ...oneLine, fontStyle: 'italic', color: '#555' }}>{sel.sp.sci}</div>
+            <div style={oneLine}><b>Found:</b> {when}</div>
+            <div style={oneLine}><b>Place:</b> {place || 'Finding place...'}{sel.approx ? ' (approximate)' : ''}</div>
+            <div style={{ ...oneLine, fontSize: TXT.small, color: '#888' }}>{sel.lat.toFixed(4)}, {sel.lng.toFixed(4)}{sel.sp.type ? ` · ${sel.sp.type}` : ''}{sel.sp.status ? ` · ${sel.sp.status}` : ''}</div>
           </div>
-          <button onClick={() => setSel(null)} style={{ position: 'absolute', top: '1.5cqw', right: '2cqw', border: 'none', background: 'none', fontSize: '2.6cqw', fontWeight: 800, textDecoration: 'underline', cursor: 'pointer', fontFamily: FONT }}>Close</button>
+          <button onClick={() => setSel(null)} style={{ position: 'absolute', top: '1.5cqw', right: '2cqw', border: 'none', background: 'none', fontSize: TXT.body, fontWeight: 800, textDecoration: 'underline', cursor: 'pointer', fontFamily: FONT }}>Close</button>
         </div>
       ) : (
-        <div style={{ ...card, display: 'grid', placeItems: 'center', textAlign: 'center', fontSize: '3cqw', lineHeight: 1.6 }}>
+        <div style={{ ...card, display: 'grid', placeItems: 'center', textAlign: 'center', fontSize: TXT.summary, lineHeight: 1.5, overflow: 'hidden' }}>
           <div>
-            <b style={{ fontSize: '3.8cqw' }}>{pins.length} {pins.length === 1 ? 'pin' : 'pins'} · {speciesCount} species</b>
+            <b style={{ fontSize: TXT.summaryTitle }}>{pins.length} {pins.length === 1 ? 'pin' : 'pins'} · {speciesCount} species</b>
             <div>{pins.length ? 'Tap a pin to see your find' : 'Scan something to drop your first pin'}</div>
           </div>
         </div>
