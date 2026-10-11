@@ -1,13 +1,14 @@
 import { useState, useRef, useEffect } from 'react'
 import Globe from 'react-globe.gl'
-import Profile, { XP_PER_LEVEL } from './Profile'
-import Login from './Login'
+import Profile from './Profile'
 import Leaderboard from './Leaderboard'
-import { supabase } from './supabase'
 
 // 🎨 THEME: change colors here
 const T = { bg: '#ffffff', text: '#111111', nav: '#8f8f8f', accent: '#bfdbfe', lcd: '#eef7e8', lcdText: '#1f2d1f' }
-// ⭐ XP values live in Supabase (the log_catch function), so players can't fake them.
+const XP_NEW = 50 // points for a new species
+const XP_REPEAT = 10 // points for seeing a species again
+const PLAYER_NAME = 'Explorer' // the name shown on the profile and leaderboard
+const SAVE_KEY = 'earthdex-save' // where progress is saved in this browser
 
 // 📐 POKÉDEX LAYOUT (percent of the Pokédex area)
 const FILES = { body: 'dex-bg.png', lcd: 'lcd.png', zoom: 'btn-zoom.png', info: 'btn-info.png', photo: 'btn-photo.png', toggle: 'btn-toggle.png', voice: 'btn-voice.png' }
@@ -17,6 +18,8 @@ const LAYOUT = {
   zoom: { x: 17.1, y: 64.8, w: 32.3 }, info: { x: 34.4, y: 52.5, w: 37.7 }, photo: { x: 39.8, y: 79.4, w: 21.1 }, toggle: { x: 53.3, y: 67.9, w: 35.4 },
   voice: { x: 28.2, y: 82.3, w: 10.8 },
 }
+// Fits the Pokédex into the same page shape as Profile/Leaderboard (bigger width = bigger Pokédex)
+const FIT = { left: '-3.58%', top: '1.67%', width: '111.27%' }
 // Buttons split into parts that press separately: [name, visible slice, press origin]
 const PIECES = {
   zoom: [['in', 'inset(0 50% 0 0)', '25% 50%'], ['out', 'inset(0 0 0 50%)', '75% 50%']],
@@ -28,7 +31,10 @@ const partOf = (k, u, v) => {
   return k
 }
 const sq = (k) => { const b = LAYOUT[k]; return { position: 'absolute', left: `${b.x}%`, top: `${b.y}%`, width: `${b.w}%`, ...(b.h != null ? { height: `${b.h}%` } : { aspectRatio: '1 / 1' }) } }
-const rowToObs = (o) => ({ sp: o.data, photo: o.photo, date: new Date(o.created_at).toLocaleDateString(), lat: o.lat, lng: o.lng })
+
+// Load saved progress from this browser (or start fresh)
+const loadSave = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {} } catch { return {} } }
+const DAY = 86400000
 
 // Shows your graphic from public/graphics, or an emoji if the file is missing
 function Img({ src, size, fb }) {
@@ -38,7 +44,6 @@ function Img({ src, size, fb }) {
 }
 
 export default function App() {
-  const [session, setSession] = useState(undefined) // undefined = checking, null = logged out
   const [tab, setTab] = useState('dex')
   const [stage, setStage] = useState('live')
   const [photo, setPhoto] = useState(null)
@@ -46,9 +51,8 @@ export default function App() {
   const [info, setInfo] = useState(false)
   const [zoom, setZoom] = useState(1)
   const [camErr, setCamErr] = useState(false)
-  const [obs, setObs] = useState([])
-  const [xp, setXp] = useState(0)
-  const [me, setMe] = useState({ name: 'explorer', handle: '@explorer' })
+  const [obs, setObs] = useState(() => loadSave().obs || [])
+  const [xp, setXp] = useState(() => loadSave().xp || 0)
   const [sel, setSel] = useState(null)
   const [press, setPress] = useState(null)
   const video = useRef()
@@ -59,24 +63,10 @@ export default function App() {
 
   const species = [...new Map(obs.map((o) => [o.sp.sci, o])).values()]
   const located = obs.filter((o) => o.lat != null)
+  const speciesSince = (days) => new Set(obs.filter((o) => Date.now() - new Date(o.t).getTime() < days * DAY).map((o) => o.sp.sci)).size
 
-  // Keep track of who is logged in
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => setSession(data.session))
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
-    return () => sub.subscription.unsubscribe()
-  }, [])
-
-  // Load this user's saved profile and catches
-  useEffect(() => {
-    if (!session) return
-    ;(async () => {
-      const { data: p } = await supabase.from('profiles').select('username, xp').eq('id', session.user.id).single()
-      if (p) { setXp(p.xp); setMe({ name: p.username, handle: '@' + p.username }) }
-      const { data: rows } = await supabase.from('observations').select('*').order('created_at', { ascending: false })
-      setObs((rows || []).map(rowToObs))
-    })()
-  }, [session])
+  // Save progress in this browser whenever it changes
+  useEffect(() => { try { localStorage.setItem(SAVE_KEY, JSON.stringify({ obs, xp })) } catch { /* storage full or blocked */ } }, [obs, xp])
 
   // Read each button PNG's transparency so only the drawn part is tappable
   useEffect(() => {
@@ -89,14 +79,14 @@ export default function App() {
 
   // Live camera inside the screen (back camera)
   useEffect(() => {
-    if (!session || tab !== 'dex' || stage !== 'live') return
+    if (tab !== 'dex' || stage !== 'live') return
     if (!navigator.mediaDevices) { setCamErr(true); return }
     let stream
     navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
       .then((s) => { stream = s; if (video.current) video.current.srcObject = s })
       .catch(() => setCamErr(true))
     return () => stream?.getTracks().forEach((t) => t.stop())
-  }, [session, tab, stage])
+  }, [tab, stage])
 
   const say = (t) => { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(t)) }
   const shrink = (src, max = 1024) => new Promise((ok) => { const i = new Image(); i.onload = () => { const s = Math.min(1, max / Math.max(i.width, i.height)), c = document.createElement('canvas'); c.width = i.width * s; c.height = i.height * s; c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.8)) }; i.src = src })
@@ -104,15 +94,15 @@ export default function App() {
     ? navigator.geolocation.getCurrentPosition((p) => ok([p.coords.latitude, p.coords.longitude]), () => ok([null, null]), { timeout: 8000 })
     : ok([null, null]))
 
-  // Saves the catch to Supabase; the database decides the XP
+  // Logs every successful catch and awards XP
   const logCatch = async (d, img) => {
+    const isNew = !obs.some((o) => o.sp.sci === d.sci)
+    const gain = isNew ? XP_NEW : XP_REPEAT
     const thumb = await shrink(img, 320)
     const [lat, lng] = await getSpot()
-    const { data, error } = await supabase.rpc('log_catch', { p_client_id: crypto.randomUUID(), p_sci: d.sci, p_data: d, p_photo: thumb, p_lat: lat, p_lng: lng })
-    if (error) throw error
-    setObs((p) => [{ sp: d, photo: thumb, date: new Date().toLocaleDateString(), lat, lng }, ...p])
-    setXp(data.xp)
-    return { isNew: data.is_new, gain: data.gain }
+    setObs((p) => [{ sp: d, photo: thumb, date: new Date().toLocaleDateString(), t: new Date().toISOString(), lat, lng }, ...p])
+    setXp((x) => x + gain)
+    return { isNew, gain }
   }
 
   const identify = async (src) => {
@@ -127,8 +117,8 @@ export default function App() {
       if (d.confidence === 'low') { alert(`Not sure what this is.\nCould be: ${d.alternatives.filter(Boolean).join(', ')}\nTry a closer, clearer photo.`); return again() }
       setR({ ...d, gain: null }); setStage('result'); setInfo(false)
       say(`${d.name}. ${d.desc}`) // Pokédex reads the short description aloud
-      try { const saved = await logCatch(d, img); setR((prev) => ({ ...prev, ...saved })) }
-      catch (e) { alert(`Couldn't save your catch: ${e.message}`) }
+      const saved = await logCatch(d, img)
+      setR((prev) => ({ ...prev, ...saved }))
     } catch (e) { alert(`Scan failed: ${e.message}`); again() }
   }
   const snap = () => {
@@ -179,16 +169,14 @@ export default function App() {
     }
   }
 
-  // ---- Login gate ----
-  if (session === undefined) return <div style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', fontFamily: 'ui-monospace, Menlo, monospace' }}>Loading EarthDex…</div>
-  if (!session) return <Login />
-
   let screen
 
   if (tab === 'dex') screen = <>
     <input ref={fileIn} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
+    {/* Same page shape as Profile and Leaderboard, so the Pokédex is the same size on every tab */}
+    <div style={{ position: 'relative', width: '100%', aspectRatio: '9 / 14', overflow: 'hidden', marginTop: 8 }}>
     <div ref={frame} onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={() => setPress(null)}
-      style={{ position: 'relative', width: '100%', aspectRatio: '3 / 4', overflow: 'hidden', touchAction: 'manipulation', userSelect: 'none', marginTop: 8 }}>
+      style={{ position: 'absolute', ...FIT, aspectRatio: '3 / 4', touchAction: 'manipulation', userSelect: 'none' }}>
       {['body', 'lcd'].map((k) => <img key={k} src={`/graphics/${FILES[k]}`} alt="" draggable={false} style={{ ...sq(k), pointerEvents: 'none' }} />)}
 
       {/* LCD screen: camera, photo, or info text */}
@@ -222,6 +210,7 @@ export default function App() {
           transform: on ? 'scale(0.9) translateY(1.5%)' : 'none', filter: on ? 'brightness(0.8)' : 'none', transition: 'transform 70ms, filter 70ms' }} />
       }))}
     </div>
+    </div>
   </>
 
   else if (tab === 'globe') screen = <>
@@ -233,12 +222,12 @@ export default function App() {
     {sel && <div style={{ background: T.accent, borderRadius: 20, padding: 12 }}><b>{sel.sp.name}</b> · {sel.date}</div>}
   </>
 
-  else if (tab === 'ranks') screen = <Leaderboard mine={{ name: me.name, species: species.length, level: Math.floor(xp / XP_PER_LEVEL) + 1, xp }} />
+  else if (tab === 'ranks') screen = <Leaderboard mine={{ name: PLAYER_NAME, xp, all: species.length, week: speciesSince(7), month: speciesSince(30) }} />
 
   else screen = <>
-    <Profile xp={xp} caught={species.length} places={new Set(located.map((o) => `${o.lat.toFixed(2)},${o.lng.toFixed(2)}`)).size} name={me.handle} />
+    <Profile xp={xp} caught={species.length} places={new Set(located.map((o) => `${o.lat.toFixed(2)},${o.lng.toFixed(2)}`)).size} name={'@' + PLAYER_NAME.toLowerCase()} />
     <div style={{ textAlign: 'center', marginTop: 8 }}>
-      <button onClick={() => supabase.auth.signOut().then(() => location.reload())} style={{ background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', color: '#888', fontFamily: 'ui-monospace, Menlo, monospace' }}>Log out</button>
+      <button onClick={() => { if (confirm('Erase all catches and XP on this device?')) { setObs([]); setXp(0) } }} style={{ background: 'none', border: 'none', textDecoration: 'underline', cursor: 'pointer', color: '#888', fontFamily: 'ui-monospace, Menlo, monospace' }}>Reset demo progress</button>
     </div>
   </>
 

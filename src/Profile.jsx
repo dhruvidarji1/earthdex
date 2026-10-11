@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from 'react'
 import * as THREE from 'three'
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js'
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js'
+import { useArrange } from './Arrange'
 
 // ⚙️ SETTINGS
 export const XP_PER_LEVEL = 2000
@@ -14,19 +15,18 @@ const XP_TEXT_COLOR = '#a8a8a8' // light gray XP numbers
 const XP_TEXT_SIZE = '50cqh' // XP numbers size (smaller number = smaller text)
 const STATS_TEXT_SIZE = '3.6cqh' // stats text size (smaller number = smaller text)
 
-// 📐 LAYOUT (percent of the profile area)
-const FILES = { device: 'dex-bg.png', edit: 'btn-edit.png', shop: 'btn-shop.png', trophy: 'btn-trophy.png', level: 'level.png', stats: 'stats-box.png' }
-const LAYOUT = {
-  device: { x: -28.5, y: -3, w: 160, h: 104 }, avatar: { x: 14.4, y: 19.9, w: 35.7, h: 31.1 },
-  edit: { x: 27.5, y: 19.6, w: 77.8, h: 22.1 }, shop: { x: 47.6, y: 34, w: 23.1, h: 13.8 }, trophy: { x: 66.7, y: 34.4, w: 20.5, h: 13.7 },
-  level: { x: 17.3, y: 53.2, w: 15, h: 8.9 }, xpbar: { x: 31.6, y: 56.7, w: 54.2, h: 2 }, xptext: { x: 11.5, y: 58.7, w: 54.6, h: 2.3 },
-  stats: { x: -17.5, y: 46.9, w: 144.6, h: 52.7 }, username: { x: 20.4, y: 48, w: 26, h: 2.4 },
+// 📐 LAYOUT (percent of the profile area). Back-to-front order:
+const ORDER = ['device', 'whitebox', 'stats', 'avatar', 'xpbar', 'xptext', 'level', 'username', 'edit', 'shop', 'trophy']
+const FILES = { device: 'dex-bg.png', whitebox: 'white-box.png', edit: 'btn-edit.png', shop: 'btn-shop.png', trophy: 'btn-trophy.png', level: 'level.png', stats: 'stats-box.png' }
+const DEFAULT_LAYOUT = {
+  device: { x: -28.5, y: -3, w: 160, h: 104 }, whitebox: { x: -41.7, y: 10.1, w: 191.7, h: 69.8 }, avatar: { x: 16.8, y: 22, w: 35.7, h: 31.1 },
+  edit: { x: 29.1, y: 24, w: 77.8, h: 22.1 }, shop: { x: 45.2, y: 38.9, w: 23.1, h: 13.8 }, trophy: { x: 67.2, y: 39.1, w: 20.5, h: 13.7 },
+  level: { x: 19.4, y: 53.9, w: 13.4, h: 8 }, xpbar: { x: 32.2, y: 57.5, w: 52.7, h: 1.6 }, xptext: { x: 11.6, y: 59.4, w: 54.6, h: 2.3 },
+  stats: { x: -17.8, y: 52.1, w: 144.6, h: 52.7 }, username: { x: 21.7, y: 49.8, w: 26, h: 2.4 },
 }
-// Tappable area of each button, trimmed in from its box edges: top right bottom left
-// (bigger % = smaller tappable area). Only the drawn button responds.
+// Tappable area of each button, trimmed in from its box edges: top right bottom left (bigger % = smaller area)
 const HIT = { edit: '38% 27% 36% 27%', shop: '24% 24% 24% 24%', trophy: '24% 24% 24% 24%' }
 
-const box = (k) => ({ position: 'absolute', left: `${LAYOUT[k].x}%`, top: `${LAYOUT[k].y}%`, width: `${LAYOUT[k].w}%`, height: `${LAYOUT[k].h}%` })
 const placeholder = { position: 'absolute', inset: 0, border: '2px dashed #bbb', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: 11, color: '#999' }
 
 // An image, or a dashed placeholder if the file isn't added yet
@@ -37,10 +37,10 @@ function Pic({ k }) {
 }
 
 // A PNG button that presses in (no action yet). Only the drawn part is tappable.
-function PressButton({ k, label }) {
+function PressButton({ k, label, style }) {
   const [down, setDown] = useState(false)
   return (
-    <div style={{ ...box(k), pointerEvents: 'none', transform: down ? 'scale(0.92) translateY(2%)' : 'none', filter: down ? 'brightness(0.85)' : 'none', transition: 'transform 70ms, filter 70ms' }}>
+    <div style={{ ...style, pointerEvents: 'none', transform: down ? 'scale(0.92) translateY(2%)' : 'none', filter: down ? 'brightness(0.85)' : 'none', transition: 'transform 70ms, filter 70ms' }}>
       <Pic k={k} />
       <button aria-label={label} onClick={() => {}} onPointerDown={() => { setDown(true); navigator.vibrate?.(15) }} onPointerUp={() => setDown(false)} onPointerLeave={() => setDown(false)}
         style={{ position: 'absolute', inset: HIT[k], padding: 0, border: 'none', background: 'none', cursor: 'pointer', pointerEvents: 'auto', WebkitTapHighlightColor: 'transparent' }} />
@@ -87,11 +87,16 @@ function Avatar3D() {
 export default function Profile({ xp, caught, places, name }) {
   const level = Math.floor(xp / XP_PER_LEVEL) + 1
   const into = xp % XP_PER_LEVEL
+  const { box, frame, bar, overlay } = useArrange('earthdex-profile-layout', DEFAULT_LAYOUT, ORDER)
   const still = { pointerEvents: 'none' } // decorations never block taps
 
-  return (
-    <div style={{ position: 'relative', width: '100%', aspectRatio: '9 / 14', overflow: 'hidden', userSelect: 'none', color: TEXT_COLOR, fontFamily: FONT, marginTop: 8 }}>
+  return <>
+    {bar}
+    <div ref={frame} style={{ position: 'relative', width: '100%', aspectRatio: '9 / 14', overflow: 'hidden', userSelect: 'none', color: TEXT_COLOR, fontFamily: FONT, marginTop: 8 }}>
       <div style={{ ...box('device'), ...still }}><Pic k="device" /></div>
+      <div style={{ ...box('whitebox'), ...still }}><Pic k="whitebox" /></div>
+
+      {/* Stats box */}
       <div style={{ ...box('stats'), ...still, containerType: 'size' }}>
         <Pic k="stats" />
         <div style={{ position: 'absolute', inset: 0, display: 'grid', placeContent: 'center', textAlign: 'center', fontWeight: 700, fontSize: STATS_TEXT_SIZE, lineHeight: 1.7 }}>
@@ -121,9 +126,11 @@ export default function Profile({ xp, caught, places, name }) {
         <div style={{ position: 'absolute', inset: 0, background: '#fff', border: '2px solid #222', borderRadius: 8, display: 'grid', placeItems: 'center', fontSize: '55cqh', fontWeight: 700, whiteSpace: 'nowrap', overflow: 'hidden' }}>{name}</div>
       </div>
 
-      <PressButton k="edit" label="edit profile" />
-      <PressButton k="shop" label="shop" />
-      <PressButton k="trophy" label="trophies" />
+      <PressButton k="edit" label="edit profile" style={box('edit')} />
+      <PressButton k="shop" label="shop" style={box('shop')} />
+      <PressButton k="trophy" label="trophies" style={box('trophy')} />
+
+      {overlay}
     </div>
-  )
+  </>
 }

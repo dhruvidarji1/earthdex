@@ -1,6 +1,6 @@
-import { useState, useEffect } from 'react'
-import { supabase } from './supabase'
+import { useState } from 'react'
 import { XP_PER_LEVEL } from './Profile'
+import { useArrange } from './Arrange'
 
 // 🎨 STYLE
 const FONT = 'ui-monospace, Menlo, monospace' // same font as the LCD screen
@@ -8,6 +8,13 @@ const ROWS = ['#fbe4e4', '#c7e0fb', '#f1e6fb', '#fdf1c6'] // row colors
 const RING = { 1: '#f2c94c', 2: '#b9bec8', 3: '#d9a066' } // gold, silver, bronze
 const BLOCK = { 1: '#fdf1c6', 2: '#c7e0fb', 3: '#f1e6fb' } // podium block colors
 const PERIODS = [['all', 'All time'], ['week', 'Weekly'], ['month', 'Monthly']]
+
+// 📐 LAYOUT (percent of the leaderboard area). Back-to-front order:
+const ORDER = ['device', 'screen', 'buttons']
+const DEFAULT_LAYOUT = {
+  device: { x: -28.5, y: -3, w: 160, h: 104 },
+  screen: { x: 18.5, y: 24.7, w: 70.1, h: 58.3 }, buttons: { x: 19.9, y: 84.5, w: 66.6, h: 7.6 },
+}
 
 // DEMO players (sample accounts, always labeled DEMO): [name, all-time species, XP, this week, this month]
 const DEMO = [
@@ -19,7 +26,6 @@ const DEMO = [
   ['SnailSol', 3, 220, 0, 1], ['ThistleTam', 2, 140, 0, 1], ['AcornAvi', 1, 60, 1, 1],
 ]
 const levelOf = (xp) => Math.floor(xp / XP_PER_LEVEL) + 1
-const since = (p) => { const d = new Date(); if (p === 'week') d.setDate(d.getDate() - 7); else d.setMonth(d.getMonth() - 1); return d.toISOString() }
 
 // Round profile picture
 function Face({ size, ring }) {
@@ -30,7 +36,7 @@ function Face({ size, ring }) {
   )
 }
 const Chip = ({ you }) => <span style={{ display: 'inline-block', fontSize: '1.9cqw', fontWeight: 800, padding: '0.1cqw 1.1cqw', borderRadius: 999, border: '0.3cqw solid #222', background: you ? '#222' : '#fff', color: you ? '#fff' : '#222', verticalAlign: 'middle', marginLeft: '0.8cqw' }}>{you ? 'You' : 'DEMO'}</span>
-const tag = (u) => (u.me ? <Chip you /> : u.demo ? <Chip /> : null)
+const tag = (u) => (u.me ? <Chip you /> : <Chip />)
 
 // A pill button that presses down when tapped
 function Pill({ label, on, onClick }) {
@@ -42,55 +48,27 @@ function Pill({ label, on, onClick }) {
   )
 }
 
-// mine = { name, species, level, xp } for the logged-in user
+// mine = { name, xp, all, week, month }: your species counts for each period
 export default function Leaderboard({ mine }) {
   const [period, setPeriod] = useState('all')
-  const [real, setReal] = useState([])
-  const [myCount, setMyCount] = useState(null)
-
-  // Load real players (All time) and count your species for the chosen period
-  useEffect(() => {
-    let off = false
-    ;(async () => {
-      let players = []
-      if (period === 'all') {
-        const { data } = await supabase.rpc('leaderboard')
-        players = (data || []).map((u) => ({ name: u.username, species: Number(u.species), xp: u.xp }))
-      }
-      let count = mine.species
-      if (period !== 'all') {
-        const { data } = await supabase.from('observations').select('sci_name').gte('created_at', since(period))
-        count = new Set((data || []).map((o) => o.sci_name)).size
-      }
-      if (!off) { setReal(players); setMyCount(count) }
-    })()
-    return () => { off = true }
-  }, [period, mine.species])
-
+  const { box, frame, bar, overlay } = useArrange('earthdex-leaderboard-layout', DEFAULT_LAYOUT, ORDER)
   const col = period === 'all' ? 1 : period === 'week' ? 3 : 4
   const list = [
-    ...DEMO.map((d) => ({ name: d[0], species: d[col], xp: d[2], demo: true })),
-    ...real.filter((u) => u.name !== mine.name),
-    { name: mine.name, species: myCount ?? mine.species, xp: mine.xp, me: true },
+    ...DEMO.map((d) => ({ name: d[0], species: d[col], xp: d[2] })),
+    { name: mine.name, species: mine[period], xp: mine.xp, me: true },
   ].sort((a, b) => b.species - a.species || b.xp - a.xp)
   const myRank = list.findIndex((u) => u.me) + 1
   const me = list[myRank - 1]
   const podium = [[list[1], 2], [list[0], 1], [list[2], 3]]
-  const unit = period === 'all' ? 'species' : `species this ${period}`
 
-  return (
-    <div style={{ position: 'relative', width: '100%', aspectRatio: '9 / 14', containerType: 'inline-size', fontFamily: FONT, color: '#1f1f2b', userSelect: 'none', marginTop: 8 }}>
+  return <>
+    {bar}
+    <div ref={frame} style={{ position: 'relative', width: '100%', aspectRatio: '9 / 14', containerType: 'inline-size', fontFamily: FONT, color: '#1f1f2b', userSelect: 'none', marginTop: 8 }}>
       {/* Your pink Pokédex */}
-      <img src="/graphics/dex-bg.png" alt="" draggable={false} style={{ position: 'absolute', left: '-28.5%', top: '-3%', width: '160%', height: '104%', objectFit: 'contain', pointerEvents: 'none' }} />
-
-      {/* Title */}
-      <div style={{ position: 'absolute', right: '13%', top: '13.5%', textAlign: 'right' }}>
-        <div style={{ fontSize: '5.2cqw', fontWeight: 800 }}>Leaderboard</div>
-        <div style={{ fontSize: '2.7cqw' }}>{unit}</div>
-      </div>
+      <img src="/graphics/dex-bg.png" alt="" draggable={false} style={{ ...box('device'), objectFit: 'contain', pointerEvents: 'none' }} />
 
       {/* Gray screen */}
-      <div style={{ position: 'absolute', left: '19%', right: '11.5%', top: '24%', bottom: '16%', background: '#c9c9cf', border: '0.7cqw solid #222', borderRadius: '4cqw', padding: '2cqw', display: 'flex' }}>
+      <div style={{ ...box('screen'), background: '#c9c9cf', border: '0.7cqw solid #222', borderRadius: '4cqw', padding: '2cqw', display: 'flex', boxSizing: 'border-box' }}>
         <div style={{ flex: 1, minHeight: 0, background: '#fff', border: '0.5cqw solid #222', borderRadius: '2.5cqw', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
           <div style={{ background: '#f1e6fb', fontSize: '2.4cqw', padding: '1.2cqw 2cqw', borderBottom: '0.4cqw solid #222' }}>Players marked DEMO are sample accounts.</div>
 
@@ -124,7 +102,7 @@ export default function Leaderboard({ mine }) {
           </div>
 
           {/* Your rank, always visible */}
-          {me && <div style={{ borderTop: '0.4cqw solid #222', padding: '1.5cqw' }}>
+          <div style={{ borderTop: '0.4cqw solid #222', padding: '1.5cqw' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '2cqw', padding: '1.4cqw 2.5cqw', borderRadius: '3cqw', border: '0.5cqw solid #222', background: '#fff' }}>
               <div style={{ textAlign: 'center', width: '7cqw' }}><b style={{ fontSize: '3.8cqw' }}>#{myRank}</b><div style={{ fontSize: '1.8cqw' }}>of {list.length}</div></div>
               <Face size="7.5cqw" />
@@ -134,14 +112,16 @@ export default function Leaderboard({ mine }) {
               </div>
               <div style={{ textAlign: 'right' }}><div style={{ fontSize: '4.6cqw', fontWeight: 900, lineHeight: 1 }}>{me.species}</div><div style={{ fontSize: '2cqw' }}>species</div></div>
             </div>
-          </div>}
+          </div>
         </div>
       </div>
 
       {/* Period buttons */}
-      <div style={{ position: 'absolute', left: '15%', right: '9%', top: '85.5%', height: '7.5%', display: 'flex', gap: '2.5cqw' }}>
+      <div style={{ ...box('buttons'), display: 'flex', gap: '2.5cqw' }}>
         {PERIODS.map(([p, label]) => <Pill key={p} label={label} on={period === p} onClick={() => setPeriod(p)} />)}
       </div>
+
+      {overlay}
     </div>
-  )
+  </>
 }
