@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect } from 'react'
 
-// Set to true to show the ✏️ Arrange buttons again
+// Set to true to show the Arrange buttons again
 export const SHOW_ARRANGE = false
 
 const small = { padding: '6px 12px', borderRadius: 12, border: '1px solid #ccc', background: '#fff', fontWeight: 600, cursor: 'pointer', fontFamily: 'system-ui' }
@@ -35,17 +35,17 @@ export function useArrange(key, defaults, order) {
   }
   const copy = () => {
     const text = JSON.stringify(L, (k, v) => (typeof v === 'number' ? round(v) : v))
-    if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => alert('Layout copied! Paste it to Claude.'), () => prompt('Copy this layout:', text))
+    if (navigator.clipboard) navigator.clipboard.writeText(text).then(() => alert('Layout copied. Paste it to Claude.'), () => prompt('Copy this layout:', text))
     else prompt('Copy this layout:', text)
   }
 
   const bar = SHOW_ARRANGE ? (
     <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', margin: '4px 0' }}>
       {edit ? <>
-        <button style={small} onClick={copy}>📋 Copy layout</button>
-        <button style={small} onClick={() => confirm('Reset layout?') && setL(defaults)}>↺ Reset</button>
+        <button style={small} onClick={copy}>Copy layout</button>
+        <button style={small} onClick={() => confirm('Reset layout?') && setL(defaults)}>Reset</button>
         <button style={{ ...small, background: '#000', color: '#fff' }} onClick={() => { setEdit(false); setSel(null) }}>Done</button>
-      </> : <button style={small} onClick={() => setEdit(true)}>✏️ Arrange</button>}
+      </> : <button style={small} onClick={() => setEdit(true)}>Arrange</button>}
     </div>
   ) : null
 

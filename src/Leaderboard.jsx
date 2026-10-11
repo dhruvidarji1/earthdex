@@ -77,7 +77,6 @@ export default function Leaderboard({ mine }) {
             <div style={{ display: 'flex', alignItems: 'flex-end', justifyContent: 'center', gap: '1.5cqw', padding: '3cqw 2cqw 0', borderBottom: '0.4cqw solid #222' }}>
               {podium.map(([u, n]) => u && (
                 <div key={n} style={{ width: '31%', display: 'flex', flexDirection: 'column', alignItems: 'center', textAlign: 'center' }}>
-                  {n === 1 && <div style={{ fontSize: '4.5cqw', lineHeight: 1 }}>👑</div>}
                   <Face size={n === 1 ? '12cqw' : '9.5cqw'} ring={RING[n]} />
                   <div style={{ marginTop: '-1.5cqw' }}>{tag(u)}</div>
                   <div style={{ fontSize: '2.7cqw', fontWeight: 800, maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{u.name}</div>

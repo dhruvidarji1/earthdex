@@ -1,16 +1,16 @@
 import { useState, useRef, useEffect } from 'react'
-import Globe from 'react-globe.gl'
+import MapPage from './MapPage'
 import Profile from './Profile'
 import Leaderboard from './Leaderboard'
 
-// 🎨 THEME: change colors here
-const T = { bg: '#ffffff', text: '#111111', nav: '#8f8f8f', accent: '#bfdbfe', lcd: '#eef7e8', lcdText: '#1f2d1f' }
+// THEME: change colors here
+const T = { bg: '#ffffff', text: '#111111', nav: '#8f8f8f', lcd: '#eef7e8', lcdText: '#1f2d1f' }
 const XP_NEW = 50 // points for a new species
 const XP_REPEAT = 10 // points for seeing a species again
 const PLAYER_NAME = 'Explorer' // the name shown on the profile and leaderboard
 const SAVE_KEY = 'earthdex-save' // where progress is saved in this browser
 
-// 📐 POKÉDEX LAYOUT (percent of the Pokédex area)
+// POKÉDEX LAYOUT (percent of the Pokédex area)
 const FILES = { body: 'dex-bg.png', lcd: 'lcd.png', zoom: 'btn-zoom.png', info: 'btn-info.png', photo: 'btn-photo.png', toggle: 'btn-toggle.png', voice: 'btn-voice.png' }
 const BTNS = ['zoom', 'info', 'photo', 'toggle', 'voice']
 const LAYOUT = {
@@ -18,7 +18,7 @@ const LAYOUT = {
   zoom: { x: 17.1, y: 64.8, w: 32.3 }, info: { x: 34.4, y: 52.5, w: 37.7 }, photo: { x: 39.8, y: 79.4, w: 21.1 }, toggle: { x: 53.3, y: 67.9, w: 35.4 },
   voice: { x: 28.2, y: 82.3, w: 10.8 },
 }
-// Fits the Pokédex into the same page shape as Profile/Leaderboard (bigger width = bigger Pokédex)
+// Fits the Pokédex into the same page shape as the other tabs (bigger width = bigger Pokédex)
 const FIT = { left: '-3.58%', top: '1.67%', width: '111.27%' }
 // Buttons split into parts that press separately: [name, visible slice, press origin]
 const PIECES = {
@@ -36,10 +36,10 @@ const sq = (k) => { const b = LAYOUT[k]; return { position: 'absolute', left: `$
 const loadSave = () => { try { return JSON.parse(localStorage.getItem(SAVE_KEY)) || {} } catch { return {} } }
 const DAY = 86400000
 
-// Shows your graphic from public/graphics, or an emoji if the file is missing
+// Shows your graphic from public/graphics, or a word if the file is missing
 function Img({ src, size, fb }) {
   const [bad, setBad] = useState(false)
-  return bad ? <span style={{ fontSize: size * 0.7, lineHeight: 1 }}>{fb}</span>
+  return bad ? <span style={{ fontSize: 12, fontWeight: 700 }}>{fb}</span>
     : <img src={`/graphics/${src}`} alt="" onError={() => setBad(true)} style={{ width: size, height: size, objectFit: 'contain' }} />
 }
 
@@ -53,7 +53,6 @@ export default function App() {
   const [camErr, setCamErr] = useState(false)
   const [obs, setObs] = useState(() => loadSave().obs || [])
   const [xp, setXp] = useState(() => loadSave().xp || 0)
-  const [sel, setSel] = useState(null)
   const [press, setPress] = useState(null)
   const video = useRef()
   const frame = useRef()
@@ -113,7 +112,7 @@ export default function App() {
       const res = await fetch('/api/identify', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: img.split(',')[1] }) })
       const d = await res.json()
       if (!res.ok) throw new Error(d.error || 'Identification failed')
-      if (!d.found) { alert(`Species not found 🔍\n${d.reason || 'No plant or animal detected.'}`); return again() }
+      if (!d.found) { alert(`Species not found.\n${d.reason || 'No plant or animal detected.'}`); return again() }
       if (d.confidence === 'low') { alert(`Not sure what this is.\nCould be: ${d.alternatives.filter(Boolean).join(', ')}\nTry a closer, clearer photo.`); return again() }
       setR({ ...d, gain: null }); setStage('result'); setInfo(false)
       say(`${d.name}. ${d.desc}`) // Pokédex reads the short description aloud
@@ -161,7 +160,7 @@ export default function App() {
       if (stage === 'live') camErr ? fileIn.current?.click() : snap()
       else if (stage === 'result') again()
     }
-    if (k === 'info') { if (r && stage === 'result') setInfo((i) => !i); else alert('Take a photo of an animal or plant first!') }
+    if (k === 'info') { if (r && stage === 'result') setInfo((i) => !i); else alert('Take a photo of an animal or plant first.') }
     if (k === 'toggle' && info) infoBox.current?.scrollBy({ top: part === 'up' ? -80 : 80, behavior: 'smooth' }) // only scrolls on the info screen
     if (k === 'voice') {
       if (speechSynthesis.speaking) speechSynthesis.cancel()
@@ -173,7 +172,7 @@ export default function App() {
 
   if (tab === 'dex') screen = <>
     <input ref={fileIn} type="file" accept="image/*" capture="environment" hidden onChange={onFile} />
-    {/* Same page shape as Profile and Leaderboard, so the Pokédex is the same size on every tab */}
+    {/* Same page shape as the other tabs, so the Pokédex is the same size everywhere */}
     <div style={{ position: 'relative', width: '100%', aspectRatio: '9 / 14', overflow: 'hidden', marginTop: 8 }}>
     <div ref={frame} onPointerDown={onDown} onPointerUp={onUp} onPointerLeave={() => setPress(null)}
       style={{ position: 'absolute', ...FIT, aspectRatio: '3 / 4', touchAction: 'manipulation', userSelect: 'none' }}>
@@ -183,21 +182,21 @@ export default function App() {
       <div style={{ ...sq('screen'), overflow: 'hidden', background: '#000', display: 'grid', placeItems: 'center' }}>
         {info && r ? (
           <div ref={infoBox} style={{ position: 'absolute', inset: 0, overflowY: 'auto', background: T.lcd, color: T.lcdText, padding: '8px 10px', fontSize: 12, lineHeight: 1.45, fontFamily: 'ui-monospace, Menlo, monospace' }}>
-            <b style={{ fontSize: 14 }}>{r.name}</b> {r.isNew && '★ NEW'}<br /><i>{r.sci}</i>
-            <div style={{ fontSize: 10, margin: '4px 0' }}>{r.verified ? '✅ Verified in GBIF' : '⚠️ AI suggestion'} · {r.confidence} confidence{r.rank !== 'species' ? ` · ${r.rank} only` : ''}</div>
-            {r.safety && <p style={{ color: '#b91c1c' }}>⚠️ {r.safety}</p>}
+            <b style={{ fontSize: 14 }}>{r.name}</b> {r.isNew && 'NEW'}<br /><i>{r.sci}</i>
+            <div style={{ fontSize: 10, margin: '4px 0' }}>{r.verified ? 'Verified in GBIF' : 'AI suggestion (not verified)'} · {r.confidence} confidence{r.rank !== 'species' ? ` · ${r.rank} only` : ''}</div>
+            {r.safety && <p style={{ color: '#b91c1c' }}><b>Safety:</b> {r.safety}</p>}
             <p>{r.desc}</p>
             {r.article && <p>{r.article}</p>}
             <p><b>Diet:</b> {r.diet}<br /><b>Habitat:</b> {r.habitat}<br /><b>Conservation:</b> {r.status}</p>
-            <p style={{ fontSize: 10, opacity: 0.7 }}>▲▼ use the cross to scroll · yellow button to close</p>
+            <p style={{ fontSize: 10, opacity: 0.7 }}>Use the cross to scroll. Press yellow to close.</p>
           </div>
         ) : <>
           {stage === 'live' && !camErr && <video ref={video} autoPlay playsInline muted style={{ width: '100%', height: '100%', objectFit: 'cover', transform: `scale(${zoom})` }} />}
-          {stage === 'live' && camErr && <span style={{ color: '#fff', textAlign: 'center', fontSize: 12, padding: 8 }}>📷 Press the photo button to take a picture</span>}
+          {stage === 'live' && camErr && <span style={{ color: '#fff', textAlign: 'center', fontSize: 12, padding: 8 }}>Press the photo button to take a picture</span>}
           {stage !== 'live' && photo && <img src={photo} alt="scan" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />}
-          {stage === 'scanning' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#0006', color: '#fff', fontWeight: 700 }}>Analyzing…</div>}
+          {stage === 'scanning' && <div style={{ position: 'absolute', inset: 0, display: 'grid', placeItems: 'center', background: '#0006', color: '#fff', fontWeight: 700 }}>Analyzing...</div>}
           {stage === 'result' && r && <div style={{ position: 'absolute', left: 0, right: 0, bottom: 0, background: '#000a', color: '#fff', fontSize: 12, padding: '4px 8px' }}>
-            <b>{r.name}</b> · {r.gain == null ? 'saving…' : `+${r.gain} XP`} {r.isNew && '★ NEW'}<br /><span style={{ fontSize: 10 }}>yellow = info · teal = scan again</span>
+            <b>{r.name}</b> · {r.gain == null ? 'saving...' : `+${r.gain} XP`} {r.isNew && 'NEW'}<br /><span style={{ fontSize: 10 }}>yellow = info · teal = scan again</span>
           </div>}
         </>}
       </div>
@@ -213,14 +212,7 @@ export default function App() {
     </div>
   </>
 
-  else if (tab === 'globe') screen = <>
-    <Globe width={Math.min(innerWidth, 480) - 32} height={420} backgroundColor="rgba(0,0,0,0)"
-      globeImageUrl="https://unpkg.com/three-globe/example/img/earth-day.jpg"
-      htmlElementsData={located} htmlLat="lat" htmlLng="lng"
-      htmlElement={(o) => { const el = document.createElement('img'); el.src = o.photo; el.style.cssText = 'width:44px;height:44px;object-fit:cover;border-radius:10px;border:2px solid #fff;cursor:pointer;pointer-events:auto'; el.onclick = () => setSel(o); return el }} />
-    <p style={{ textAlign: 'center' }}>{located.length} places · {species.length} species</p>
-    {sel && <div style={{ background: T.accent, borderRadius: 20, padding: 12 }}><b>{sel.sp.name}</b> · {sel.date}</div>}
-  </>
+  else if (tab === 'globe') screen = <MapPage pins={located} speciesCount={species.length} />
 
   else if (tab === 'ranks') screen = <Leaderboard mine={{ name: PLAYER_NAME, xp, all: species.length, week: speciesSince(7), month: speciesSince(30) }} />
 
@@ -235,7 +227,7 @@ export default function App() {
     <div style={{ minHeight: '100vh', background: T.bg, color: T.text, fontFamily: 'system-ui', maxWidth: 480, margin: '0 auto', padding: '8px 16px 110px' }}>
       {screen}
       <nav style={{ position: 'fixed', bottom: 0, left: 0, right: 0, display: 'flex', background: T.nav, padding: '8px 0' }}>
-        {[['profile', 'nav-profile.png', '👤'], ['ranks', 'nav-trophy.png', '🏆'], ['dex', 'nav-dex.png', '📘'], ['globe', 'nav-globe.png', '🌐']].map(([t, src, fb]) => (
+        {[['profile', 'nav-profile.png', 'Profile'], ['ranks', 'nav-trophy.png', 'Ranks'], ['dex', 'nav-dex.png', 'Dex'], ['globe', 'nav-globe.png', 'Map']].map(([t, src, fb]) => (
           <button key={t} onClick={() => { if (t !== 'dex') again(); setTab(t) }} style={{ flex: 1, background: 'none', border: 'none', cursor: 'pointer', opacity: tab === t ? 1 : 0.55 }}>
             <Img src={src} size={56} fb={fb} />
           </button>
