@@ -138,7 +138,6 @@ export default function MapPage({ pins, speciesCount, focusT, onFocused }) {
         </div>
       )}
 
-      {overlay}
-    </div>
-  </>
-}
+       </div>
+     </>
+   }

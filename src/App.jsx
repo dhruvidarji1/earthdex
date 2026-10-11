@@ -53,6 +53,9 @@ const getSpot = () => new Promise((ok) => {
 const placeOf = (lat, lng) => fetch(`${LOOKUP}?latitude=${lat}&longitude=${lng}&localityLanguage=en`).then((r) => r.json())
   .then((d) => [d.city || d.locality, d.principalSubdivision, d.countryName].filter(Boolean).join(', ')).catch(() => '')
 
+// A tiny silent sound, played on the first tap so iPhones allow the voice to play later
+const SILENT = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA='
+
 // Shows your graphic from public/graphics, or a word if the file is missing
 function Img({ src, size, fb }) {
   const [bad, setBad] = useState(false)
@@ -77,6 +80,8 @@ export default function App() {
   const alpha = useRef({})
   const infoBox = useRef()
   const fileIn = useRef()
+  const voice = useRef(null) // the audio player for the ElevenLabs voice
+  const voiceCache = useRef({}) // descriptions already turned into audio (saves credits)
 
   const species = [...new Map(obs.map((o) => [o.sp.sci, o])).values()]
   const located = obs.filter((o) => o.lat != null)
@@ -105,7 +110,28 @@ export default function App() {
     return () => stream?.getTracks().forEach((t) => t.stop())
   }, [tab, stage])
 
-  const say = (t) => { speechSynthesis.cancel(); speechSynthesis.speak(new SpeechSynthesisUtterance(t)) }
+  // ---- Voice (ElevenLabs, with the built-in voice as a backup) ----
+  const player = () => (voice.current ||= new Audio())
+  const unlockVoice = () => { const a = player(); if (a.dataset.ok) return; a.src = SILENT; a.play().then(() => { a.pause(); a.dataset.ok = '1' }).catch(() => {}) }
+  const stopVoice = () => { const a = voice.current; if (a) { a.pause(); a.currentTime = 0 } speechSynthesis.cancel() }
+  const isTalking = () => (voice.current && !voice.current.paused && !voice.current.ended) || speechSynthesis.speaking
+  const say = async (text) => {
+    stopVoice()
+    try {
+      let url = voiceCache.current[text]
+      if (!url) {
+        const res = await fetch('/api/speak', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ text }) })
+        if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Voice failed')
+        url = voiceCache.current[text] = URL.createObjectURL(await res.blob())
+      }
+      const a = player(); a.src = url; a.currentTime = 0
+      await a.play()
+    } catch (e) {
+      console.warn('ElevenLabs voice unavailable, using backup voice:', e.message)
+      speechSynthesis.speak(new SpeechSynthesisUtterance(text))
+    }
+  }
+
   const shrink = (src, max = 1024) => new Promise((ok) => { const i = new Image(); i.onload = () => { const s = Math.min(1, max / Math.max(i.width, i.height)), c = document.createElement('canvas'); c.width = i.width * s; c.height = i.height * s; c.getContext('2d').drawImage(i, 0, 0, c.width, c.height); ok(c.toDataURL('image/jpeg', 0.8)) }; i.src = src })
 
   // Logs every catch, awards XP, and pins it on the map where it was found
@@ -147,7 +173,7 @@ export default function App() {
     identify(c.toDataURL('image/jpeg', 0.9))
   }
   const onFile = (e) => { const f = e.target.files?.[0]; if (f) identify(URL.createObjectURL(f)); e.target.value = '' }
-  const again = () => { speechSynthesis.cancel(); setStage('live'); setInfo(false); setPhoto(null) }
+  const again = () => { stopVoice(); setStage('live'); setInfo(false); setPhoto(null) }
 
   // ---- Tapping the drawn buttons ----
   const hitTest = (e) => {
@@ -163,6 +189,7 @@ export default function App() {
     return null
   }
   const onDown = (e) => {
+    unlockVoice() // lets the voice play automatically later on iPhone
     const h = hitTest(e)
     if (!h) return
     const part = partOf(h.k, h.u, h.v)
@@ -181,7 +208,7 @@ export default function App() {
     if (k === 'info') { if (r && stage === 'result') setInfo((i) => !i); else alert('Take a photo of an animal or plant first.') }
     if (k === 'toggle' && info) infoBox.current?.scrollBy({ top: part === 'up' ? -80 : 80, behavior: 'smooth' }) // only scrolls on the info screen
     if (k === 'voice') {
-      if (speechSynthesis.speaking) speechSynthesis.cancel()
+      if (isTalking()) stopVoice()
       else if (r && stage === 'result') say(`${r.name}. ${r.desc}`)
     }
   }
